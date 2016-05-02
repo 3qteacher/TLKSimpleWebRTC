@@ -39,7 +39,7 @@
 #pragma mark - TLKSocketIOSignaling
 
 @interface TLKSocketIOSignaling () <
-    TLKWebRTCDelegate>
+TLKWebRTCDelegate>
 {
     BOOL _localAudioMuted;
     BOOL _localVideoMuted;
@@ -105,11 +105,11 @@
 #pragma mark - object lifecycle
 
 - (instancetype)initWithVideoDevice:(AVCaptureDevice *)device {
-	self = [super init];
+    self = [super init];
     if (self) {
-    	if (device) {
-			_allowVideo = YES;
-			_videoDevice = device;
+        if (device) {
+            _allowVideo = YES;
+            _videoDevice = device;
         }
         self.currentClients = [[NSMutableSet alloc] init];
     }
@@ -117,17 +117,17 @@
 }
 
 - (instancetype)initWithVideo:(BOOL)allowVideo {
-	// Set front camera as the default device
-	AVCaptureDevice* frontCamera;
-	if (allowVideo) {
-		frontCamera = [[AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo] lastObject];
-	}
-	return [self initWithVideoDevice:frontCamera];
+    // Set front camera as the default device
+    AVCaptureDevice* frontCamera;
+    if (allowVideo) {
+        frontCamera = [[AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo] lastObject];
+    }
+    return [self initWithVideoDevice:frontCamera];
 }
 
 - (instancetype)init {
-	// Use default device
-	return [self initWithVideo:YES];
+    // Use default device
+    return [self initWithVideo:YES];
 }
 
 #pragma mark - peer/room utilities
@@ -185,12 +185,12 @@
     }
     
     __weak TLKSocketIOSignaling *weakSelf = self;
-
+    
     self.socket = [[AZSocketIO alloc] initWithHost:apiServer andPort:[NSString stringWithFormat:@"%d",port] secure:secure];
-
+    
     NSString* originURL = [NSString stringWithFormat:@"https://%@:%d", apiServer, port];
     [self.socket setValue:originURL forHTTPHeaderField:@"Origin"];
-
+    
     // setup SocketIO blocks
     self.socket.messageReceivedBlock = ^(id data) { [weakSelf _socketMessageReceived:data]; };
     self.socket.eventReceivedBlock = ^(NSString *eventName, id data) { [weakSelf _socketEventReceived:eventName withData:data]; };
@@ -198,24 +198,26 @@
     self.socket.errorBlock = ^(NSError *error) { [weakSelf _socketReceivedError:error]; };
     
     self.socket.reconnectionLimit = 5.0f;
-
-    if (!self.webRTC) {
-        if (self.allowVideo && self.videoDevice) {
-            self.webRTC = [[TLKWebRTC alloc] initWithVideoDevice:self.videoDevice];
-        } else {
-            self.webRTC = [[TLKWebRTC alloc] initWithVideo:NO];
-        }
-        self.webRTC.delegate = self;
-    }
     
     [self.socket connectWithSuccess:^{
-        dispatch_async(dispatch_get_main_queue(), ^{
-            TLKSocketIOSignaling *strongSelf = weakSelf;
-            strongSelf.localMediaStream = strongSelf.webRTC.localMediaStream;
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             
-            if (successCallback) {
-                successCallback();
+            if (!weakSelf.webRTC) {
+                if (weakSelf.allowVideo && weakSelf.videoDevice) {
+                    weakSelf.webRTC = [[TLKWebRTC alloc] initWithVideoDevice:self.videoDevice];
+                } else {
+                    weakSelf.webRTC = [[TLKWebRTC alloc] initWithVideo:NO];
+                }
+                weakSelf.webRTC.delegate = weakSelf;
             }
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                weakSelf.localMediaStream = weakSelf.webRTC.localMediaStream;
+                
+                if (successCallback) {
+                    successCallback();
+                }
+            });
         });
     } andFailure:^(NSError *error) {
         DLog(@"Failed to connect socket.io: %@", error);
@@ -238,7 +240,7 @@
             NSDictionary* clients = data[1][@"clients"];
             
             [[clients allKeys] enumerateObjectsUsingBlock:^(id peerID, NSUInteger idx, BOOL *stop) {
-                [self.webRTC addPeerConnectionForID:peerID];
+                [self.webRTC addPeerConnectionForID:peerID caller: true];
                 [self.webRTC createOfferForPeerWithID:peerID];
                 
                 [self.currentClients addObject:peerID];
@@ -320,11 +322,29 @@
     }
 }
 
+- (void)sendDirMessage:(NSString*)message successHandler:(void (^)(void))successHandler errorHandler:(void (^)(NSString*))errorHandler
+{
+
+    NSError *error;
+    NSDictionary *messageDict = @{@"message": message};
+    NSData *messageData = [NSJSONSerialization dataWithJSONObject:messageDict options:0 error:&error];
+        
+    if (!error)
+    {
+        [self.webRTC sendMessage:messageData successHandler:successHandler errorHandler:errorHandler];
+            
+    }
+    else
+    {
+        errorHandler(@"Unable to encode message to JSON");
+    }
+
+}
 #pragma mark - Mute/Unmute utilities
 
 - (void)_sendMuteMessagesForTrack:(NSString *)trackString mute:(BOOL)mute {
     NSError *error = nil;
-
+    
     for (NSString* peerID in self.currentClients) {
         [self.socket emit:@"message"
                      args:@{@"to":peerID,
@@ -386,13 +406,13 @@
         }
         
     }
-
+    
     NSLog(@"eventName = %@, type = %@, from = %@, to = %@",eventName, dictionary[@"type"], dictionary[@"from"], dictionary[@"to"]);
     
     if ([dictionary[@"type"] isEqualToString:@"iceFailed"]) {
-    
+        
         [[[UIAlertView alloc] initWithTitle:@"Connection Failed" message:@"Talky could not establish a connection to a participant in this chat. Please try again later." delegate:nil cancelButtonTitle:@"Continue" otherButtonTitles:nil] show];
-    
+        
     } else if ([dictionary[@"type"] isEqualToString:@"candidate"]) {
         
         RTCICECandidate* candidate = [[RTCICECandidate alloc] initWithMid:dictionary[@"payload"][@"candidate"][@"sdpMid"]
@@ -410,10 +430,10 @@
         
     } else if ([dictionary[@"type"] isEqualToString:@"offer"]) {
         
-        [self.webRTC addPeerConnectionForID:dictionary[@"from"]];
+        [self.webRTC addPeerConnectionForID:dictionary[@"from"] caller: false];
         [self.currentClients addObject:dictionary[@"from"]];
         
-        // Fix for browser-to-app connection crash using beta API.
+        // Fix for browsero-app connection crash using beta API.
         NSString* origSDP = dictionary[@"payload"][@"sdp"];
         NSError* error;
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"m=application \\d+ DTLS/SCTP 5000 *"
@@ -423,8 +443,8 @@
         NSString* sdp = [regex stringByReplacingMatchesInString:origSDP options:0 range:NSMakeRange(0, [origSDP length]) withTemplate:@"m=application 0 DTLS/SCTP 5000"];
         
         RTCSessionDescription* remoteSDP = [[RTCSessionDescription alloc] initWithType:dictionary[@"payload"][@"type"]
-                                                                                   sdp:sdp];
-        
+                                                                                   sdp:origSDP];
+        NSLog(@"Change SDP.");
         [self.webRTC setRemoteDescription:remoteSDP forPeerWithID:dictionary[@"from"] receiver:YES];
         
     } else if ([eventName isEqualToString:@"remove"]) {
@@ -435,21 +455,21 @@
         [self.currentClients removeObject:dictionary[@"id"]];
         
     } else if ([dictionary[@"payload"][@"name"] isEqualToString:@"audio"]) {
-    
+        
         TLKMediaStream *stream = [self _streamForPeerIdentifier:dictionary[@"from"]];
         stream.audioMuted = [dictionary[@"type"] isEqualToString:@"mute"];
         if([self.delegate respondsToSelector:@selector(socketIOSignaling:peer:toggledAudioMute:)]) {
             [self.delegate socketIOSignaling:self peer:dictionary[@"from"] toggledAudioMute:stream.audioMuted];
         }
-    
+        
     } else if ([dictionary[@"payload"][@"name"] isEqualToString:@"video"]) {
-    
+        
         TLKMediaStream *stream = [self _streamForPeerIdentifier:dictionary[@"from"]];
         stream.videoMuted = [dictionary[@"type"] isEqualToString:@"mute"];
         if([self.delegate respondsToSelector:@selector(socketIOSignaling:peer:toggledVideoMute:)]) {
             [self.delegate socketIOSignaling:self peer:dictionary[@"from"] toggledVideoMute:stream.videoMuted];
         }
-    
+        
     }
 }
 
@@ -544,4 +564,11 @@
     }
 }
 
+- (void)webRTC:(TLKWebRTC *)webRTC onMessage:(NSString *)messageText{
+    [self.delegate socketIOSignaling:self onDirMessage:messageText];
+}
+
+- (void)webRTC:(TLKWebRTC *)webRTC onDataChannelOpen:(RTCDataChannel *)channel{
+    [self.delegate socketIOSignaling:self onDirOpen:channel];
+}
 @end

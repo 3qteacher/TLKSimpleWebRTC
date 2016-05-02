@@ -5,6 +5,7 @@
 
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
+#import "RTCDataChannel.h"
 
 typedef void (^TLKSocketIOSignalingSuccessBlock)(void);
 typedef void (^TLKSocketIOSignalingFailureBlock)(NSError *error);
@@ -28,7 +29,7 @@ typedef void (^TLKSocketIOSignalingFailureBlock)(NSError *error);
 
 - (void)lockRoomWithKey:(NSString*)key success:(void(^)(void))successCallback failure:(void(^)(void))failureCallback;
 - (void)unlockRoomWithSuccess:(void(^)(void))successCallback failure:(void(^)(void))failureCallback;
-
+- (void)sendDirMessage:(NSString*)message successHandler:(void (^)(void))successHandler errorHandler:(void (^)(NSString*))errorHandler;
 @property (readonly, nonatomic) BOOL allowVideo;
 
 // Allow the user to see the configured video capture device
@@ -64,5 +65,6 @@ typedef void (^TLKSocketIOSignalingFailureBlock)(NSError *error);
 - (void)socketIOSignaling:(TLKSocketIOSignaling *)socketIOSignaling peer:(NSString *)peer toggledAudioMute:(BOOL)mute;
 - (void)socketIOSignaling:(TLKSocketIOSignaling *)socketIOSignaling peer:(NSString *)peer toggledVideoMute:(BOOL)mute;
 - (void)socketIOSignaling:(TLKSocketIOSignaling *)socketIOSignaling didChangeLock:(BOOL)locked;
-
+- (void)socketIOSignaling:(TLKSocketIOSignaling *)socketIOSignaling onDirMessage:(NSString *)message;
+- (void)socketIOSignaling:(TLKSocketIOSignaling *)socketIOSignaling onDirOpen:(RTCDataChannel *)channel;
 @end
