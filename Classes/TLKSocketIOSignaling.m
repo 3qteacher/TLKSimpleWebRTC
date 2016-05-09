@@ -8,12 +8,12 @@
 #import "TLKMediaStream.h"
 
 #import "TLKWebRTC.h"
-#import "AZSocketIO.h"
+//#import "AZSocketIO.h"
 #import "RTCMediaStream.h"
 #import "RTCICEServer.h"
 #import "RTCVideoTrack.h"
 #import "RTCAudioTrack.h"
-
+#import <SocketIOClientSwift/SocketIOClientSwift-Swift.h>
 #define LOG_SIGNALING 1
 #ifndef DLog
 #if !defined(NDEBUG) && LOG_SIGNALING
@@ -185,20 +185,46 @@ TLKWebRTCDelegate>
     }
     
     __weak TLKSocketIOSignaling *weakSelf = self;
+    NSURL* url = [[NSURL alloc] initWithString: [NSString stringWithFormat:@"https://%@:%d", apiServer, port]];
+    self.socket = [[SocketIOClient  alloc] initWithSocketURL:url options:@{@"log": @YES, @"forcePolling": @YES}];
     
-    self.socket = [[AZSocketIO alloc] initWithHost:apiServer andPort:[NSString stringWithFormat:@"%d",port] secure:secure];
-    
-    NSString* originURL = [NSString stringWithFormat:@"https://%@:%d", apiServer, port];
-    [self.socket setValue:originURL forHTTPHeaderField:@"Origin"];
+    //NSString* originURL = [NSString stringWithFormat:@"https://%@:%d", apiServer, port];
+    //[self.socket setValue:originURL forHTTPHeaderField:@"Origin"];
     
     // setup SocketIO blocks
+	/*
     self.socket.messageReceivedBlock = ^(id data) { [weakSelf _socketMessageReceived:data]; };
     self.socket.eventReceivedBlock = ^(NSString *eventName, id data) { [weakSelf _socketEventReceived:eventName withData:data]; };
     self.socket.disconnectedBlock = ^() { [weakSelf _socketDisconnected]; };
     self.socket.errorBlock = ^(NSError *error) { [weakSelf _socketReceivedError:error]; };
-    
-    self.socket.reconnectionLimit = 5.0f;
-    
+	*/
+    self.socket.onAny(callback: _socketEventReceived);
+	
+    //self.socket.reconnectionLimit = 5.0f;
+    [socket on:@"connect" callback:^(NSArray* data, SocketAckEmitter* ack) {
+		NSLog(@"socket connected");
+		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            
+            if (!weakSelf.webRTC) {
+                if (weakSelf.allowVideo && weakSelf.videoDevice) {
+                    weakSelf.webRTC = [[TLKWebRTC alloc] initWithVideoDevice:self.videoDevice];
+                } else {
+                    weakSelf.webRTC = [[TLKWebRTC alloc] initWithVideo:NO];
+                }
+                weakSelf.webRTC.delegate = weakSelf;
+            }
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                weakSelf.localMediaStream = weakSelf.webRTC.localMediaStream;
+                
+                if (successCallback) {
+                    successCallback();
+                }
+            });
+        });
+	}];
+	[socket connect];
+	/*
     [self.socket connectWithSuccess:^{
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             
@@ -225,6 +251,7 @@ TLKWebRTCDelegate>
             failureCallback(error);
         }
     }];
+	*/
 }
 
 - (void)joinRoom:(NSString*)room withKey:(NSString*)key success:(void(^)(void))successCallback failure:(void(^)(void))failureCallback {
@@ -235,7 +262,9 @@ TLKWebRTCDelegate>
     } else {
         args = room;
     }
-    [self.socket emit:@"join" args:args error:&error ackWithArgs:^(NSArray *data) {
+    //[self.socket emit:@"join" args:args error:&error ackWithArgs:^(NSArray *data) {
+	[self.socket emitWithAck:@"join" withItems:args(0, ^(NSArray* data) {
+        
         if (data[0] == [NSNull null]) {
             NSDictionary* clients = data[1][@"clients"];
             
@@ -257,10 +286,12 @@ TLKWebRTCDelegate>
             failureCallback();
         }
     }];
+	/*
     if (error) {
         NSLog(@"Error: %@", error);
         failureCallback();
     }
+	*/
 }
 
 - (void)joinRoom:(NSString *)room success:(void(^)(void))successCallback failure:(void(^)(void))failureCallback {
@@ -277,7 +308,7 @@ TLKWebRTCDelegate>
     
     [self _disconnectSocket];
 }
-
+/*
 - (void)lockRoomWithKey:(NSString *)key success:(void(^)(void))successCallback failure:(void(^)(void))failureCallback {
     NSError *error = nil;
     [self.socket emit:@"lockRoom" args:key error:&error ackWithArgs:^(NSArray *data) {
@@ -321,7 +352,7 @@ TLKWebRTCDelegate>
         }
     }
 }
-
+*/
 - (void)sendDirMessage:(NSString*)message successHandler:(void (^)(void))successHandler errorHandler:(void (^)(NSString*))errorHandler
 {
 
@@ -341,16 +372,16 @@ TLKWebRTCDelegate>
 
 }
 #pragma mark - Mute/Unmute utilities
-
+/*
 - (void)_sendMuteMessagesForTrack:(NSString *)trackString mute:(BOOL)mute {
     NSError *error = nil;
     
     for (NSString* peerID in self.currentClients) {
         [self.socket emit:@"message"
-                     args:@{@"to":peerID,
+                     items:@{@"to":peerID,
                             @"type" : mute ? @"mute" : @"unmute",
                             @"payload": @{@"name":trackString}}
-                    error:&error];
+                    ];
     }
 }
 
@@ -358,13 +389,13 @@ TLKWebRTCDelegate>
     [self _sendMuteMessagesForTrack:@"audio" mute:self.localAudioMuted];
     [self _sendMuteMessagesForTrack:@"video" mute:self.localVideoMuted];
 }
-
+*/
 #pragma mark - SocketIO methods
 
 - (void)_socketMessageReceived:(id)data {
 }
 
-- (void)_socketEventReceived:(NSString*)eventName withData:(id)data {
+- (void)_socketEventReceived:(NSString*)eventName items:(id)data {
     NSDictionary *dictionary = nil;
     
     if ([eventName isEqualToString:@"locked"]) {
@@ -488,7 +519,7 @@ TLKWebRTCDelegate>
                            @"type": offer.type,
                            @"payload": @{@"type": offer.type, @"sdp": offer.description}};
     NSError *error = nil;
-    [self.socket emit:@"message" args:@[args] error:&error];
+    [self.socket emit:@"message" items:@[args]];
 }
 
 - (void)webRTC:(TLKWebRTC *)webRTC didSendSDPAnswer:(RTCSessionDescription *)answer forPeerWithID:(NSString* )peerID {
@@ -497,7 +528,7 @@ TLKWebRTCDelegate>
                            @"type": answer.type,
                            @"payload": @{@"type": answer.type, @"sdp": answer.description}};
     NSError *error = nil;
-    [self.socket emit:@"message" args:@[args] error:&error];
+    [self.socket emit:@"message" items:@[args]];
 }
 
 - (void)webRTC:(TLKWebRTC *)webRTC didSendICECandidate:(RTCICECandidate *)candidate forPeerWithID:(NSString *)peerID {
@@ -508,7 +539,7 @@ TLKWebRTCDelegate>
                                                            @"sdpMLineIndex": [NSString stringWithFormat:@"%ld", (long)candidate.sdpMLineIndex],
                                                            @"candidate": candidate.sdp}}};
     NSError *error = nil;
-    [self.socket emit:@"message" args:@[args] error:&error];
+    [self.socket emit:@"message" items:@[args]];
 }
 
 - (void)webRTC:(TLKWebRTC *)webRTC didObserveICEConnectionStateChange:(RTCICEConnectionState)state forPeerWithID:(NSString *)peerID {
@@ -519,7 +550,7 @@ TLKWebRTCDelegate>
         NSDictionary *args = @{@"to": peerID,
                                @"type": @"iceFailed"};
         NSError *error = nil;
-        [self.socket emit:@"message" args:@[args] error:&error];
+        [self.socket emit:@"message" items:@[args]];
         [[[UIAlertView alloc] initWithTitle:@"Connection Failed" message:@"Talky could not establish a connection to a participant in this chat. Please try again later." delegate:nil cancelButtonTitle:@"Continue" otherButtonTitles:nil] show];
     }
 }
