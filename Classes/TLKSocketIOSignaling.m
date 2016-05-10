@@ -189,6 +189,7 @@ TLKWebRTCDelegate>
     self.socket = [[AZSocketIO alloc] initWithHost:apiServer andPort:[NSString stringWithFormat:@"%d",port] secure:secure];
     
     NSString* originURL = [NSString stringWithFormat:@"https://%@:%d", apiServer, port];
+
     [self.socket setValue:originURL forHTTPHeaderField:@"Origin"];
     
     // setup SocketIO blocks
@@ -322,11 +323,11 @@ TLKWebRTCDelegate>
     }
 }
 
-- (void)sendDirMessage:(NSString*)message successHandler:(void (^)(void))successHandler errorHandler:(void (^)(NSString*))errorHandler
+- (void)sendDirMessage:(NSDictionary*)message successHandler:(void (^)(void))successHandler errorHandler:(void (^)(NSString*))errorHandler
 {
 
     NSError *error;
-    NSDictionary *messageDict = @{@"message": message};
+    NSDictionary *messageDict = @{@"type": @"Direct", @"payload": message};
     NSData *messageData = [NSJSONSerialization dataWithJSONObject:messageDict options:0 error:&error];
         
     if (!error)
