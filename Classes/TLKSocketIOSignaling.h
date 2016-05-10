@@ -29,7 +29,7 @@ typedef void (^TLKSocketIOSignalingFailureBlock)(NSError *error);
 
 - (void)lockRoomWithKey:(NSString*)key success:(void(^)(void))successCallback failure:(void(^)(void))failureCallback;
 - (void)unlockRoomWithSuccess:(void(^)(void))successCallback failure:(void(^)(void))failureCallback;
-- (void)sendDirMessage:(NSString*)message successHandler:(void (^)(void))successHandler errorHandler:(void (^)(NSString*))errorHandler;
+- (void)sendDirMessage:(NSDictionary*)message successHandler:(void (^)(void))successHandler errorHandler:(void (^)(NSString*))errorHandler;
 @property (readonly, nonatomic) BOOL allowVideo;
 
 // Allow the user to see the configured video capture device
